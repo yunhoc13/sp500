@@ -10,5 +10,9 @@
     "walkforward": 0.31622776601683794,
     "walkforward_self": 0.0031622776601683794,
     "oof_year": 0.01
+  },
+  "rf": {
+    "min_samples_leaf": 5,
+    "max_features": 0.33
   }
 }
