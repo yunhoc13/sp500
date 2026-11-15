@@ -12,7 +12,7 @@ over the next 12 months.
 | Step | Description | Status |
 |---|---|---|
 | 1 | Historical S&P 500 membership (April 1, 2011-2025) | ✅ `data/membership.csv` |
-| 2-5 | SEC financials + prices -> company x year panel | ✅ `data/panel.csv` (3,858 rows) |
+| 2-5 | SEC financials + prices -> company x year panel | ✅ `data/panel.csv` (3,488 rows) |
 | 6 | Models: Linear/Ridge/Lasso -> RF -> XGBoost -> MLP, out-of-fold scores, SHAP | ⏳ |
 | 7 | Decile backtest vs SPY and simple value baselines | ⏳ |
 
@@ -25,17 +25,18 @@ information that was public on that date.
 |---|---|
 | `year, ticker, cik, sector, sic` | identifiers; sector is derived from the SEC SIC code |
 | `period_end, available_date` | fiscal year used, and when that 10-K became public (< April 1) |
-| `price, mcap, ev, ebitda, revenue, debt, cash` | inputs to the target. **Never use as features** (they reveal y) |
-| `debt_missing` | no debt tag found, debt set to 0 (9.6% of rows); use for robustness checks |
+| `price, mcap, ev, ebitda, revenue, net_income, pe, debt, cash` | inputs to the target and checks. **Never use as features** (they reveal y) |
+| `debt_missing` | always False in panel.csv: rows with no debt tag are excluded (they are in `panel_full.csv`) |
 | `shares_fixed` | share count replaced by net income / EPS because the filed value had the wrong scale (2.4%) |
 | `op_income_fixed` | operating income taken as pre-tax income + interest (tag missing or mis-tagged) (18%) |
 | `hold_truncated` | stopped trading during the holding year; return measured to the last price (0 rows, see below) |
+| `pe_low` | P/E below 3. Flagged, not dropped: all 13 cases were checked and are real (2020 crash, one-off gains). See `data/review_low_pe.csv` |
 | `log_mcap, rev_growth, eps_growth, op_margin, roe, debt_to_equity, volatility, beta` | **features X** |
 | `gross_margin` | optional feature (missing for ~26% of firms, mostly services) |
 | `log_ev_ebitda` | **target y** |
 | `fwd_ret_12m, fwd_excess_ret_12m` | next-12-month return, and minus SPY. **Evaluation only, never a feature** |
 
-Rows per year: 174 (2011) to 331 (2025). How rows were filtered at each step is in
+Rows per year: 153 (2011) to 300 (2025). How rows were filtered at each step is in
 `data/data_report.txt`:
 
 | Step | Rows |
@@ -47,14 +48,14 @@ Rows per year: 174 (2011) to 331 (2025). How rows were filtered at each step is 
 | 10-K filed before April 1 | 4,787 |
 | price available on the formation date | 4,732 |
 | positive EBITDA and EV | 4,537 |
-| plausible market cap ($1B-$5T) | 4,532 |
-| debt not negative, interest < 20% of debt | 4,466 |
-| EBITDA at least 2% of revenue | 4,300 |
-| all features present (**panel.csv**) | **3,858** |
+| debt data available (no missing debt tag) | 4,098 |
+| plausible market cap ($1B-$5T) | 4,096 |
+| debt not negative, interest < 20% of debt | 4,030 |
+| EBITDA at least 2% of revenue | 3,877 |
+| all features present (**panel.csv**) | **3,488** |
 
 Rows removed by the three quality checks are listed in `data/dropped_rows.csv` with the
-reason. A per-year version of this table (share of index members kept: 35% in 2011,
-66% in 2025) is in `data_report.txt`.
+reason. A per-year version of this table is in `data_report.txt`.
 
 ## Data quality fixes
 
@@ -66,7 +67,12 @@ Raw XBRL filings contain errors, so the pipeline checks and corrects them:
   net income / EPS when the two disagree by more than 1.5x.
 - **Mis-tagged operating income:** replaced by pre-tax income + interest when it is far off.
 - **Stock splits:** share counts in a 10-K are already restated for splits before the filing
-  date, so only splits after the filing are applied.
+  date, so only splits after the filing are applied. Yahoo adjusts past prices for every
+  split up to today, so `04c_full_splits.py` downloads each symbol's complete split history
+  (e.g. KLAC 10:1 and CTVA 6.665x in 2026 had made earlier prices 10x / 6.7x too low).
+- **Missing debt:** companies whose debt tags we cannot read (e.g. Ford, AES) would get
+  debt = 0 and look artificially cheap, and they cluster in the cheapest decile. They are
+  excluded from panel.csv (kept in panel_full.csv for a robustness check).
 - **Check:** market cap / net income matches price / EPS within 0.88-1.05 for 98% of rows.
 
 ## Data sources
@@ -104,6 +110,7 @@ python src/02_sec_download.py    # SEC financial facts + SIC codes (~5-10 min)
 python src/03_fundamentals.py    # one row per company fiscal year
 python src/04_prices.py          # daily prices (~10-15 min)
 python src/04b_retry_prices.py   # retry symbols that failed
+python src/04c_full_splits.py    # full split history (prices are adjusted up to today)
 python src/05_build_panel.py     # -> data/panel.csv, data/data_report.txt
 ```
 

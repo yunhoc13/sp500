@@ -130,6 +130,7 @@ for r in df.itertuples(index=False):
                sic=r.sic, period_end=cur.period_end.date(),
                available_date=cur.available_date.date(),
                revenue=cur.revenue, interest_expense=cur.interest_expense,
+               net_income=cur.net_income,
                shares_fixed=bool(cur.shares_fixed),
                op_income_fixed=bool(cur.op_income_fixed or cur.op_income_fallback),
                debt_negative=bool(cur.debt_negative), hold_truncated=False)
@@ -204,7 +205,9 @@ log("  with positive EBITDA and EV", panel, "ebitda>0")
 panel["ebitda_margin"] = panel.ebitda / panel.revenue
 ir = panel.interest_expense.abs() / panel.debt.where(panel.debt > 0)
 panel["debt_suspect"] = (panel.debt < 0) | (ir > 0.20)    # interest > 20% of debt
+panel["pe"] = panel.mcap / panel.net_income.where(panel.net_income > 0)
 checks = {
+    "no debt data (debt tag missing, EV would be understated)": lambda p: p.debt_missing,
     "implausible market cap (< $1B or > $5T)": lambda p: ~p.mcap.between(1e9, 5e12),
     "debt negative or too small for its interest expense": lambda p: p.debt_suspect,
     "EBITDA < 2% of revenue (EV/EBITDA not meaningful)": lambda p: ~(p.ebitda_margin >= 0.02),
@@ -216,8 +219,14 @@ for why, rule in checks.items():
     dropped.append(d)
     panel = panel[~mask]
     log(f"  after dropping: {why}", panel, why.split(" ")[0])
-pd.concat(dropped)[["year", "ticker", "drop_reason", "mcap", "ebitda", "revenue",
-                    "debt", "interest_expense"]].to_csv(DATA / "dropped_rows.csv", index=False)
+# P/E below 3 is NOT dropped: it is real for crashed stocks (e.g. airlines on
+# 2020-04-01). It is flagged and listed in data/review_low_pe.csv to be checked
+# by hand; only rows confirmed as data errors should be fixed at the source.
+panel["pe_low"] = panel.pe < 3
+panel.loc[panel.pe_low, ["year", "ticker", "price", "mcap", "net_income", "pe"]].to_csv(
+    DATA / "review_low_pe.csv", index=False)
+pd.concat(dropped)[["year", "ticker", "drop_reason", "price", "mcap", "pe", "ebitda",
+                    "revenue", "debt", "interest_expense"]].to_csv(DATA / "dropped_rows.csv", index=False)
 panel["log_ev_ebitda"] = np.log(panel.ev / panel.ebitda)
 panel["log_mcap"] = np.log(panel.mcap)
 
@@ -229,8 +238,8 @@ for c in WINSORIZE:
         panel[c] = panel[c].clip(lo, hi)
 
 cols = (["year", "ticker", "cik", "sector", "sic", "period_end", "available_date",
-         "price", "mcap", "ev", "ebitda", "revenue", "debt", "cash",
-         "debt_missing", "shares_fixed", "op_income_fixed", "hold_truncated"]
+         "price", "mcap", "ev", "ebitda", "revenue", "net_income", "pe", "debt", "cash",
+         "debt_missing", "shares_fixed", "op_income_fixed", "hold_truncated", "pe_low"]
         + FEATURES + OPTIONAL + ["log_ev_ebitda", "fwd_ret_12m", "fwd_excess_ret_12m"])
 for c in cols:
     if c not in panel:
@@ -252,7 +261,7 @@ cov["kept_%"] = (100 * cov["final"] / cov["members"]).round(1)
 report.append("\nCoverage per year (rows remaining after each step):")
 report.append(cov.to_string())
 report.append("\nFlags in panel.csv (share of rows):")
-for c in ["debt_missing", "shares_fixed", "op_income_fixed", "hold_truncated"]:
+for c in ["shares_fixed", "op_income_fixed", "hold_truncated", "pe_low"]:
     report.append(f"  {c:<20}{complete[c].mean():.3f}")
 
 report.append("\nMissing rate per feature (panel_full.csv):")
