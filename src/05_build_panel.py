@@ -52,8 +52,10 @@ def sector_of(sic):
 
 
 report = []
-def log(msg, n):
-    report.append(f"{msg:<60}{n:>8}")
+stages = {}          # per-year row counts at each step (for the coverage table)
+def log(msg, frame, short):
+    report.append(f"{msg:<60}{len(frame):>8}")
+    stages[short] = frame.groupby("year").size()
     print(report[-1])
 
 
@@ -97,16 +99,16 @@ def last_price(series, date, max_gap_days=7):
 
 # ---------- build ---------------------------------------------------------
 df = members.merge(tc[["ticker", "cik"]], on="ticker", how="left")
-log("Member-years (S&P 500, April 1, 2011-2025)", len(df))
+log("Member-years (S&P 500, April 1, 2011-2025)", df, "members")
 df = df[df.cik.notna()].copy()
 df["cik"] = df.cik.astype(int)
-log("  after ticker -> CIK mapping", len(df))
+log("  after ticker -> CIK mapping", df, "cik")
 df = df.sort_values(["year", "cik", "ticker"]).drop_duplicates(["year", "cik"])
-log("  after removing share-class duplicates (GOOG/GOOGL)", len(df))
+log("  after removing share-class duplicates (GOOG/GOOGL)", df, "dedup")
 df["sic"] = df.cik.map(sic)
 df["sector"] = df.sic.map(sector_of)
 df = df[df.sector != "Financials"]
-log("  after excluding financials (SIC 6000-6799)", len(df))
+log("  after excluding financials (SIC 6000-6799)", df, "nonfin")
 
 rows = []
 for r in df.itertuples(index=False):
@@ -126,7 +128,11 @@ for r in df.itertuples(index=False):
 
     rec = dict(year=r.year, ticker=r.ticker, cik=r.cik, sector=r.sector,
                sic=r.sic, period_end=cur.period_end.date(),
-               available_date=cur.available_date.date())
+               available_date=cur.available_date.date(),
+               revenue=cur.revenue, interest_expense=cur.interest_expense,
+               shares_fixed=bool(cur.shares_fixed),
+               op_income_fixed=bool(cur.op_income_fixed or cur.op_income_fallback),
+               debt_negative=bool(cur.debt_negative), hold_truncated=False)
 
     # ---- price and market cap
     if sym in close.columns:
@@ -135,7 +141,9 @@ for r in df.itertuples(index=False):
         p_date, p_close = None, None
     if p_date is not None:
         raw_price = p_close * split_factor(sym, p_date)           # undo later splits
-        shares = cur.shares * split_factor(sym, cur.period_end, p_date)
+        # 10-K share counts are already restated for splits before the filing
+        # date, so only splits between the filing and the price date apply
+        shares = cur.shares * split_factor(sym, cur.available_date, p_date)
         rec["price"] = raw_price
         rec["mcap"] = raw_price * shares
         # volatility and beta: prior 252 trading days of daily returns
@@ -152,6 +160,14 @@ for r in df.itertuples(index=False):
         a1_date, a1 = last_price(adj[sym], F1)
         s0_date, s0 = last_price(adj[BENCHMARK], F)
         s1_date, s1 = last_price(adj[BENCHMARK], F1)
+        if a0 is not None and a1 is None:
+            # stopped trading during the holding year (acquired / delisted):
+            # use the last available price, and compare with SPY to that date
+            after = adj[sym].loc[F:F1].dropna()
+            if len(after):
+                a1_date, a1 = after.index[-1], after.iloc[-1]
+                s1_date, s1 = last_price(adj[BENCHMARK], a1_date)
+                rec["hold_truncated"] = True
         if None not in (a0, a1, s0, s1):
             rec["fwd_ret_12m"] = a1 / a0 - 1
             rec["fwd_excess_ret_12m"] = (a1 / a0) - (s1 / s0)
@@ -175,13 +191,33 @@ for r in df.itertuples(index=False):
     rows.append(rec)
 
 panel = pd.DataFrame(rows)
-log("  with a 10-K filed before April 1 (point-in-time)", len(panel))
+log("  with a 10-K filed before April 1 (point-in-time)", panel, "10k")
 panel = panel[panel.get("mcap").notna()] if "mcap" in panel else panel.iloc[0:0]
-log("  with a price on the formation date (yfinance)", len(panel))
+log("  with a price on the formation date (yfinance)", panel, "price")
 
 panel["ev"] = panel.mcap + panel.debt - panel.cash
 panel = panel[(panel.ebitda > 0) & (panel.ev > 0)].copy()
-log("  with positive EBITDA and EV", len(panel))
+log("  with positive EBITDA and EV", panel, "ebitda>0")
+
+# ---- data-quality filters (rows that survive the checks in step 3 but are
+#      still implausible). Dropped rows are listed in data/dropped_rows.csv.
+panel["ebitda_margin"] = panel.ebitda / panel.revenue
+ir = panel.interest_expense.abs() / panel.debt.where(panel.debt > 0)
+panel["debt_suspect"] = (panel.debt < 0) | (ir > 0.20)    # interest > 20% of debt
+checks = {
+    "implausible market cap (< $1B or > $5T)": lambda p: ~p.mcap.between(1e9, 5e12),
+    "debt negative or too small for its interest expense": lambda p: p.debt_suspect,
+    "EBITDA < 2% of revenue (EV/EBITDA not meaningful)": lambda p: ~(p.ebitda_margin >= 0.02),
+}
+dropped = []
+for why, rule in checks.items():
+    mask = rule(panel)
+    d = panel[mask].assign(drop_reason=why)
+    dropped.append(d)
+    panel = panel[~mask]
+    log(f"  after dropping: {why}", panel, why.split(" ")[0])
+pd.concat(dropped)[["year", "ticker", "drop_reason", "mcap", "ebitda", "revenue",
+                    "debt", "interest_expense"]].to_csv(DATA / "dropped_rows.csv", index=False)
 panel["log_ev_ebitda"] = np.log(panel.ev / panel.ebitda)
 panel["log_mcap"] = np.log(panel.mcap)
 
@@ -193,7 +229,8 @@ for c in WINSORIZE:
         panel[c] = panel[c].clip(lo, hi)
 
 cols = (["year", "ticker", "cik", "sector", "sic", "period_end", "available_date",
-         "price", "mcap", "ev", "ebitda", "debt", "cash", "debt_missing"]
+         "price", "mcap", "ev", "ebitda", "revenue", "debt", "cash",
+         "debt_missing", "shares_fixed", "op_income_fixed", "hold_truncated"]
         + FEATURES + OPTIONAL + ["log_ev_ebitda", "fwd_ret_12m", "fwd_excess_ret_12m"])
 for c in cols:
     if c not in panel:
@@ -202,9 +239,21 @@ panel = panel[cols].sort_values(["year", "ticker"])
 panel.to_csv(DATA / "panel_full.csv", index=False)
 
 complete = panel.dropna(subset=FEATURES + ["log_ev_ebitda"])
-log("  with all features present -> panel.csv", len(complete))
-log("  ... of which have a forward 12-month return", complete.fwd_excess_ret_12m.notna().sum())
+log("  with all features present -> panel.csv", complete, "final")
+report.append(f"{'  ... of which have a forward 12-month return':<60}"
+              f"{complete.fwd_excess_ret_12m.notna().sum():>8}")
+report.append(f"{'  ... of which stopped trading during the holding year':<60}"
+              f"{int(complete.hold_truncated.sum()):>8}")
 complete.to_csv(DATA / "panel.csv", index=False)
+
+# coverage per year: how many index members survive each step
+cov = pd.DataFrame(stages).fillna(0).astype(int)
+cov["kept_%"] = (100 * cov["final"] / cov["members"]).round(1)
+report.append("\nCoverage per year (rows remaining after each step):")
+report.append(cov.to_string())
+report.append("\nFlags in panel.csv (share of rows):")
+for c in ["debt_missing", "shares_fixed", "op_income_fixed", "hold_truncated"]:
+    report.append(f"  {c:<20}{complete[c].mean():.3f}")
 
 report.append("\nMissing rate per feature (panel_full.csv):")
 report.append(panel[FEATURES + OPTIONAL].isna().mean().round(3).to_string())
@@ -213,5 +262,5 @@ report.append(complete.groupby("year").size().to_string())
 report.append("\nRows per sector (panel.csv):")
 report.append(complete.sector.value_counts().to_string())
 (DATA / "data_report.txt").write_text("\n".join(report))
-print("\n".join(report[report.index("\nMissing rate per feature (panel_full.csv):"):]))
+print("\n".join(report[report.index("\nCoverage per year (rows remaining after each step):"):]))
 print("\nDone. data/panel.csv is ready for modeling.")

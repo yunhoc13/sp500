@@ -88,10 +88,14 @@ def company_rows(cik, facts):
             out[f"{c}_filed"] = m["filed"].values
         filed_cols.append(f"{c}_filed")
 
-    # date the numbers we use were all public = the latest of their first filings
-    used = ["revenue_filed", "op_income_filed", "da_filed", "shares_filed",
-            "equity_filed", "cash_filed"]
-    out["available_date"] = out[used].max(axis=1)
+    # available_date = filing date of the original 10-K for that fiscal year
+    # (earliest first-filing among the core income items). Any item that only
+    # appeared in a LATER filing was not public then -> treated as missing.
+    core = ["revenue_filed", "op_income_filed", "net_income_filed", "pretax_income_filed"]
+    out["available_date"] = out[core].min(axis=1)
+    for fc in filed_cols:
+        late = out[fc] > out["available_date"] + pd.Timedelta(days=45)
+        out.loc[late, fc[:-len("_filed")]] = np.nan
     out["cik"] = cik
     return out.drop(columns=filed_cols)
 
@@ -110,15 +114,33 @@ for i, f in enumerate(files, 1):
 
 fund = pd.concat(rows, ignore_index=True)
 
-# operating income fallback: pre-tax income + interest expense
-fund["op_income_fallback"] = fund["op_income"].isna() & fund["pretax_income"].notna()
-fund["op_income"] = fund["op_income"].fillna(
-    fund["pretax_income"] + fund["interest_expense"].fillna(0))
+# ---- data-quality fixes ---------------------------------------------------
+# (a) operating income: fall back to pre-tax income + interest (EBIT) when the
+#     tag is missing, or when the tagged value is far from EBIT (mis-tagged line)
+ebit_alt = fund["pretax_income"] + fund["interest_expense"].fillna(0)
+fund["op_income_fallback"] = fund["op_income"].isna() & ebit_alt.notna()
+far = (fund["op_income"].notna() & ebit_alt.notna() &
+       ((fund["op_income"] - ebit_alt).abs() >
+        0.5 * ebit_alt.abs() + 0.02 * fund["revenue"].abs()))
+fund["op_income_fixed"] = far
+fund.loc[far | fund["op_income_fallback"], "op_income"] = ebit_alt
+
+# (b) shares: some filers tag share counts in the wrong scale (e.g. 747 instead
+#     of 752 million). Check against net income / EPS and replace when off.
+implied = fund["net_income"] / fund["eps"]
+reliable = (fund["eps"].abs() >= 0.25) & (np.sign(fund["net_income"]) == np.sign(fund["eps"]))
+implied = implied.where(reliable)
+ratio = fund["shares"] / implied
+bad = implied.notna() & (fund["shares"].isna() | (ratio < 0.67) | (ratio > 1.5))
+fund["shares_fixed"] = bad
+fund.loc[bad, "shares"] = implied
 
 # D&A fallback, gross profit fallback, total debt
 da_parts = fund[["depreciation", "amortization"]].sum(axis=1, min_count=1)
 fund["da"] = fund["da"].fillna(da_parts.where(fund["depreciation"].notna()))
 fund["gross_profit"] = fund["gross_profit"].fillna(fund["revenue"] - fund["cogs"])
+debt_cols = ["debt_total", "debt_noncurrent", "debt_current", "short_term_borrowings"]
+fund["debt_negative"] = (fund[debt_cols] < 0).any(axis=1)
 parts = fund[["debt_noncurrent", "debt_current"]]
 split_sum = parts.sum(axis=1, min_count=1)
 fund["debt"] = fund["debt_total"].fillna(split_sum)
@@ -127,13 +149,16 @@ fund["debt"] = fund["debt"].fillna(0) + fund["short_term_borrowings"].fillna(0)
 
 cols = ["cik", "period_end", "available_date", "revenue", "gross_profit",
         "op_income", "da", "net_income", "eps", "shares", "equity", "cash",
-        "debt", "debt_missing", "op_income_fallback"]
+        "debt", "interest_expense",
+        "debt_missing", "debt_negative", "op_income_fallback", "op_income_fixed",
+        "shares_fixed"]
 fund = fund[cols].sort_values(["cik", "period_end"])
 fund.to_csv(DATA / "fundamentals.csv", index=False)
 
 print(f"\nSaved {len(fund)} company-years for {fund.cik.nunique()} companies -> data/fundamentals.csv")
 print("Share of rows with each item:")
-print(fund[cols[3:-2]].notna().mean().round(3).to_string())
-print(f"rows with no debt tag (debt set to 0): {fund.debt_missing.mean():.3f}")
-print(f"rows using pre-tax + interest for operating income: {fund.op_income_fallback.mean():.3f}")
+print(fund[cols[3:14]].notna().mean().round(3).to_string())
+print("Data-quality flags (share of company-years):")
+for c in cols[14:]:
+    print(f"  {c:<20}{fund[c].mean():.3f}")
 print("Next: python src/04_prices.py")

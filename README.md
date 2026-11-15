@@ -12,7 +12,7 @@ over the next 12 months.
 | Step | Description | Status |
 |---|---|---|
 | 1 | Historical S&P 500 membership (April 1, 2011-2025) | ✅ `data/membership.csv` |
-| 2-5 | SEC financials + prices -> company x year panel | ✅ `data/panel.csv` (3,893 rows) |
+| 2-5 | SEC financials + prices -> company x year panel | ✅ `data/panel.csv` (3,858 rows) |
 | 6 | Models: Linear/Ridge/Lasso -> RF -> XGBoost -> MLP, out-of-fold scores, SHAP | ⏳ |
 | 7 | Decile backtest vs SPY and simple value baselines | ⏳ |
 
@@ -25,14 +25,17 @@ information that was public on that date.
 |---|---|
 | `year, ticker, cik, sector, sic` | identifiers; sector is derived from the SEC SIC code |
 | `period_end, available_date` | fiscal year used, and when that 10-K became public (< April 1) |
-| `price, mcap, ev, ebitda, debt, cash` | inputs to the target |
-| `debt_missing` | True if no debt tag was found (debt set to 0); use for robustness checks |
+| `price, mcap, ev, ebitda, revenue, debt, cash` | inputs to the target. **Never use as features** (they reveal y) |
+| `debt_missing` | no debt tag found, debt set to 0 (9.6% of rows); use for robustness checks |
+| `shares_fixed` | share count replaced by net income / EPS because the filed value had the wrong scale (2.4%) |
+| `op_income_fixed` | operating income taken as pre-tax income + interest (tag missing or mis-tagged) (18%) |
+| `hold_truncated` | stopped trading during the holding year; return measured to the last price (0 rows, see below) |
 | `log_mcap, rev_growth, eps_growth, op_margin, roe, debt_to_equity, volatility, beta` | **features X** |
 | `gross_margin` | optional feature (missing for ~26% of firms, mostly services) |
 | `log_ev_ebitda` | **target y** |
 | `fwd_ret_12m, fwd_excess_ret_12m` | next-12-month return, and minus SPY. **Evaluation only, never a feature** |
 
-Rows per year: 159 (2011) to 331 (2025). How rows were filtered at each step is in
+Rows per year: 174 (2011) to 331 (2025). How rows were filtered at each step is in
 `data/data_report.txt`:
 
 | Step | Rows |
@@ -41,10 +44,30 @@ Rows per year: 159 (2011) to 331 (2025). How rows were filtered at each step is 
 | matched to an SEC company ID (CIK) | 6,226 |
 | one share class per company | 6,189 |
 | excluding financials (SIC 6000-6799) | 4,983 |
-| 10-K filed before April 1 | 4,625 |
-| price available on the formation date | 4,534 |
-| positive EBITDA and EV | 4,375 |
-| all features present (**panel.csv**) | **3,893** |
+| 10-K filed before April 1 | 4,787 |
+| price available on the formation date | 4,732 |
+| positive EBITDA and EV | 4,537 |
+| plausible market cap ($1B-$5T) | 4,532 |
+| debt not negative, interest < 20% of debt | 4,466 |
+| EBITDA at least 2% of revenue | 4,300 |
+| all features present (**panel.csv**) | **3,858** |
+
+Rows removed by the three quality checks are listed in `data/dropped_rows.csv` with the
+reason. A per-year version of this table (share of index members kept: 35% in 2011,
+66% in 2025) is in `data_report.txt`.
+
+## Data quality fixes
+
+Raw XBRL filings contain errors, so the pipeline checks and corrects them:
+
+- **Point-in-time values:** each number is taken as first reported (not later restatements),
+  and the fiscal year is used only if its 10-K was filed before April 1.
+- **Share counts in the wrong scale** (e.g. 747 instead of 752 million): replaced by
+  net income / EPS when the two disagree by more than 1.5x.
+- **Mis-tagged operating income:** replaced by pre-tax income + interest when it is far off.
+- **Stock splits:** share counts in a 10-K are already restated for splits before the filing
+  date, so only splits after the filing are applied.
+- **Check:** market cap / net income matches price / EPS within 0.88-1.05 for 98% of rows.
 
 ## Data sources
 
@@ -59,6 +82,10 @@ Rows per year: 159 (2011) to 331 (2025). How rows were filtered at each step is 
 **Known limitations:** companies that were later acquired or delisted are
 under-represented (no CIK match or no Yahoo prices), which can bias backtest
 results upward (survivorship bias). Earlier years have fewer rows for this reason.
+Yahoo removes the entire price history of delisted symbols, so no stock in the
+panel stops trading during its holding year (`hold_truncated` = 0); delisted firms
+are missing from the start rather than ending with a partial return. This means a
+"-100% for delisted stocks" sensitivity analysis is not possible with this data.
 
 ## Why April 1?
 
