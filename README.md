@@ -14,7 +14,7 @@ over the next 12 months.
 | 1 | Historical S&P 500 membership (April 1, 2011-2025) | ✅ `data/membership.csv` |
 | 2-5 | SEC financials + prices -> company x year panel | ✅ `data/panel.csv` (3,488 rows) |
 | 6 | Models: Linear/Ridge/Lasso -> RF -> XGBoost -> MLP, out-of-fold scores, SHAP | ⏳ |
-| 7 | Decile backtest vs SPY and simple value baselines | ⏳ |
+| 7 | Backtest vs SPY and simple value baselines (`src/10_backtest.py`) | ✅ code ready, waiting for final scores |
 
 ## Main dataset: `data/panel.csv`
 
@@ -74,6 +74,25 @@ Raw XBRL filings contain errors, so the pipeline checks and corrects them:
   debt = 0 and look artificially cheap, and they cluster in the cheapest decile. They are
   excluded from panel.csv (kept in panel_full.csv for a robustness check).
 - **Check:** market cap / net income matches price / EPS within 0.88-1.05 for 98% of rows.
+
+## Backtest: `src/10_backtest.py`
+
+Each April 1, stocks are ranked by `mispricing` within each model and scheme and split
+into 5 (and 10) groups; group 1 is the cheapest. For each group we take the average
+`fwd_excess_ret_12m` (12-month return minus SPY), averaging within a year first so every
+year counts equally. Two baselines use no model: `cheap` (log EV/EBITDA minus the year
+median) and `sector_cheap` (minus the same year's sector median).
+
+Reported for the test period (2018-2025) and the development period (2011-2017):
+cheapest-group return, spread (cheapest minus most expensive), share of positive years,
+t-statistic of the spread, and the information coefficient (Spearman correlation of
+-mispricing with the forward return) with its mean, std and t-statistic. Robustness: the
+test-period spread with each year left out, the risk/growth profile and sector mix of the
+cheapest group, and the stocks in the 2020 cheapest group.
+
+```bash
+python src/10_backtest.py   # -> results/backtest_*.csv, figures/backtest_groups.png
+```
 
 ## Data sources
 
