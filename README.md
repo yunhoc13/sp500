@@ -12,31 +12,53 @@ over the next 12 months.
 | Step | Description | Status |
 |---|---|---|
 | 1 | Historical S&P 500 membership (April 1, 2011-2025) | ✅ `data/membership.csv` |
-| 2 | SEC financial statements (10-K, point-in-time) | ⏳ in progress |
-| 3 | Daily prices (yfinance) | ⏳ |
-| 4 | Final company x year panel (`panel.csv`) | ⏳ |
-| 5 | Models: Linear/Ridge/Lasso -> RF -> XGBoost -> MLP, SHAP | ⏳ |
-| 6 | Decile backtest vs SPY and simple value baselines | ⏳ |
+| 2-5 | SEC financials + prices -> company x year panel | ✅ `data/panel.csv` (3,893 rows) |
+| 6 | Models: Linear/Ridge/Lasso -> RF -> XGBoost -> MLP, out-of-fold scores, SHAP | ⏳ |
+| 7 | Decile backtest vs SPY and simple value baselines | ⏳ |
 
-## Data so far: `data/membership.csv`
+## Main dataset: `data/panel.csv`
 
-Which companies were in the S&P 500 on each formation date (April 1 of each year).
+One row = one company on one formation date (April 1 of `year`), using only
+information that was public on that date.
 
 | Column | Meaning |
 |---|---|
-| `year` | Formation year (2011-2025) |
-| `formation_date` | April 1 of that year |
-| `ticker` | Ticker of a company in the index on that date |
+| `year, ticker, cik, sector, sic` | identifiers; sector is derived from the SEC SIC code |
+| `period_end, available_date` | fiscal year used, and when that 10-K became public (< April 1) |
+| `price, mcap, ev, ebitda, debt, cash` | inputs to the target |
+| `debt_missing` | True if no debt tag was found (debt set to 0); use for robustness checks |
+| `log_mcap, rev_growth, eps_growth, op_margin, roe, debt_to_equity, volatility, beta` | **features X** |
+| `gross_margin` | optional feature (missing for ~26% of firms, mostly services) |
+| `log_ev_ebitda` | **target y** |
+| `fwd_ret_12m, fwd_excess_ret_12m` | next-12-month return, and minus SPY. **Evaluation only, never a feature** |
 
-- 7,534 rows, 792 unique tickers, about 497-506 tickers per year
-  (some companies list two share classes, e.g. GOOG and GOOGL).
-- **Source:** [fja05680/sp500](https://github.com/fja05680/sp500), historical
-  components file (updated 2026-09-07). For each year we take the most recent
-  snapshot on or before April 1.
-- **Why historical membership:** using today's list would only include survivors
-  and inflate backtest results (survivorship bias).
-- **Known gaps:** 2011-2014 have 497 tickers (source gaps); some older companies
-  appear under later tickers (e.g. Yahoo as `AABA`).
+Rows per year: 159 (2011) to 331 (2025). How rows were filtered at each step is in
+`data/data_report.txt`:
+
+| Step | Rows |
+|---|---|
+| S&P 500 member-years, April 1 2011-2025 | 7,534 |
+| matched to an SEC company ID (CIK) | 6,226 |
+| one share class per company | 6,189 |
+| excluding financials (SIC 6000-6799) | 4,983 |
+| 10-K filed before April 1 | 4,625 |
+| price available on the formation date | 4,534 |
+| positive EBITDA and EV | 4,375 |
+| all features present (**panel.csv**) | **3,893** |
+
+## Data sources
+
+| Data | Source | Notes |
+|---|---|---|
+| S&P 500 membership | [fja05680/sp500](https://github.com/fja05680/sp500) | Compiled from *Trading Evolved* + index changes |
+| Ticker -> CIK | SEC `company_tickers.json` | Current tickers only; renamed/acquired firms drop out |
+| Annual financials (10-K) | SEC companyfacts API | Each number kept as **first reported** (point-in-time) |
+| Industry (SIC) | SEC submissions API | Sector feature, financials exclusion |
+| Daily prices, SPY | Yahoo Finance via yfinance | 199 of 793 symbols unavailable (mostly delisted) |
+
+**Known limitations:** companies that were later acquired or delisted are
+under-represented (no CIK match or no Yahoo prices), which can bias backtest
+results upward (survivorship bias). Earlier years have fewer rows for this reason.
 
 ## Why April 1?
 
@@ -44,13 +66,18 @@ Most S&P 500 companies have a December fiscal year and must file their 10-K with
 60 days. By April 1 nearly every company's latest annual report is public, so all
 companies are compared on equally fresh, already-public information.
 
-## Planned data sources
+## Rebuilding the data
 
-| Data | Source |
-|---|---|
-| Ticker -> SEC company ID (CIK) | SEC `company_tickers.json` |
-| Annual financials + filing dates | SEC companyfacts API |
-| Industry codes (SIC) | SEC submissions API |
-| Daily prices, SPY benchmark | Yahoo Finance via yfinance |
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install pandas numpy requests yfinance
+# set USER_AGENT in src/config.py to your name + email (SEC requirement)
+python src/01_membership.py      # S&P 500 membership
+python src/02_sec_download.py    # SEC financial facts + SIC codes (~5-10 min)
+python src/03_fundamentals.py    # one row per company fiscal year
+python src/04_prices.py          # daily prices (~10-15 min)
+python src/04b_retry_prices.py   # retry symbols that failed
+python src/05_build_panel.py     # -> data/panel.csv, data/data_report.txt
+```
 
 Data is for academic use in this course project only.

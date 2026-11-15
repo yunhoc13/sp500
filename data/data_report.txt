@@ -1,0 +1,50 @@
+Member-years (S&P 500, April 1, 2011-2025)                      7534
+  after ticker -> CIK mapping                                   6226
+  after removing share-class duplicates (GOOG/GOOGL)            6189
+  after excluding financials (SIC 6000-6799)                    4983
+  with a 10-K filed before April 1 (point-in-time)              4625
+  with a price on the formation date (yfinance)                 4534
+  with positive EBITDA and EV                                   4375
+  with all features present -> panel.csv                        3893
+  ... of which have a forward 12-month return                   3893
+
+Missing rate per feature (panel_full.csv):
+log_mcap          0.000
+rev_growth        0.030
+eps_growth        0.014
+op_margin         0.028
+roe               0.068
+debt_to_equity    0.054
+volatility        0.002
+beta              0.002
+gross_margin      0.264
+
+Rows per year (panel.csv):
+year
+2011    159
+2012    211
+2013    225
+2014    224
+2015    225
+2016    228
+2017    237
+2018    250
+2019    268
+2020    292
+2021    295
+2022    317
+2023    313
+2024    318
+2025    331
+
+Rows per sector (panel.csv):
+sector
+Industrials      834
+Technology       772
+Consumer         738
+Health Care      419
+Utilities        391
+Materials        341
+Other            155
+Energy           150
+Communication     93
