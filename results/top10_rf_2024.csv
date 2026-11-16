@@ -1,0 +1,11 @@
+ticker,sector,actual_ev_ebitda,typical_ev_ebitda,fair_ev_ebitda,discount_vs_fair,raises_fair_value,lowers_fair_value,fwd_ret_12m,fwd_excess_ret_12m_vs_spy
+CHTR,Communication,6.6,17.2,19.3,-66%,Size (log market cap) 24.49 (+0.06); Debt / equity 8.82 (+0.05); Beta 1.16 (+0.03),Revenue growth +1% (-0.04); ROE +41% (-0.02); Sector Communication (-0.01),30.5%,21.7%
+UAL,Industrials,5.6,17.3,16.4,-66%,Revenue growth +19% (+0.11); Debt / equity 3.12 (+0.04); Beta 1.38 (+0.03),EPS growth +254% (-0.06); Sector Industrials (-0.04); Size (log market cap) 23.48 (-0.04),44.0%,35.2%
+BG,Consumer,4.4,17.3,12.7,-65%,Volatility +23% (+0.02),Revenue growth -11% (-0.07); Operating margin +6% (-0.06); EPS growth +41% (-0.05),-21.5%,-30.3%
+CF,Materials,5.5,17.2,15.7,-65%,EPS growth -52% (+0.06); Size (log market cap) 23.51 (+0.00),Revenue growth -36% (-0.06); ROE +32% (-0.03); Sector Materials (-0.02),-2.1%,-10.9%
+MOS,Materials,6.2,17.3,16.8,-63%,EPS growth -65% (+0.16); ROE +9% (+0.03); Beta 1.14 (+0.02),Size (log market cap) 23.10 (-0.08); Revenue growth -28% (-0.06); Operating margin +10% (-0.03),-14.7%,-23.5%
+BWA,Consumer,6.0,17.0,15.7,-62%,EPS growth -33% (+0.07); Beta 1.01 (+0.03); Sector Consumer (+0.03),Size (log market cap) 22.83 (-0.09); Operating margin +8% (-0.07); Revenue growth -10% (-0.04),-17.5%,-26.3%
+PHM,Industrials,6.9,17.1,17.8,-61%,Debt / equity 0.01 (+0.15); Beta 1.23 (+0.02); Operating margin +21% (+0.01),Revenue growth -1% (-0.08); Sector Industrials (-0.03); ROE +25% (-0.02),-12.4%,-21.2%
+NUE,Materials,6.6,17.1,16.3,-60%,Size (log market cap) 24.64 (+0.07); EPS growth -37% (+0.05); Beta 1.11 (+0.01),Revenue growth -16% (-0.11); Sector Materials (-0.03); ROE +22% (-0.03),-39.2%,-48.0%
+DAL,Industrials,6.0,17.1,14.7,-59%,Revenue growth +15% (+0.06); Beta 1.32 (+0.04),Operating margin +10% (-0.06); ROE +42% (-0.06); EPS growth +248% (-0.05),-11.1%,-19.9%
+LUV,Industrials,10.0,17.1,24.6,-59%,Operating margin +1% (+0.33); ROE +4% (+0.06); EPS growth -13% (+0.01),Beta 0.84 (-0.02); Volatility +34% (-0.01); Size (log market cap) 23.65 (-0.01),10.8%,2.0%

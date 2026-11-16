@@ -18,7 +18,7 @@ def make_xgb(max_depth, n_estimators, learning_rate):
 
 
 MODELS = {
-    "rf": (make_rf, {"min_samples_leaf": [5, 10, 20, 40],
+    "rf": (make_rf, {"min_samples_leaf": [3, 5, 10, 20, 40],
                      "max_features": [0.33, 0.6, 1.0]}),
     "xgb": (make_xgb, {"max_depth": [2, 3, 4],
                        "n_estimators": [200, 500],

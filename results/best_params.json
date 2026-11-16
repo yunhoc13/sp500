@@ -1,18 +1,23 @@
 {
   "ridge": {
-    "oof": 31.622776601683793,
-    "walkforward": 316.2277660168379,
+    "oof": 100.0,
+    "walkforward": 1000.0,
     "walkforward_self": 31.622776601683793,
-    "oof_year": 10.0
+    "oof_year": 31.622776601683793
   },
   "lasso": {
-    "oof": 0.0031622776601683794,
+    "oof": 0.01,
     "walkforward": 0.31622776601683794,
-    "walkforward_self": 0.0031622776601683794,
+    "walkforward_self": 0.00031622776601683794,
     "oof_year": 0.01
   },
   "rf": {
-    "min_samples_leaf": 5,
+    "min_samples_leaf": 3,
     "max_features": 0.33
+  },
+  "xgb": {
+    "max_depth": 4,
+    "n_estimators": 200,
+    "learning_rate": 0.02
   }
 }
