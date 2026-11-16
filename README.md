@@ -94,6 +94,17 @@ cheapest group, and the stocks in the 2020 cheapest group.
 python src/10_backtest.py   # -> results/backtest_*.csv, figures/backtest_groups.png
 ```
 
+## Model selection rule (decided 2026-11-16)
+
+The final model is the one with the highest **development-period (2011-2017) out-of-fold
+R^2** for predicting log(EV/EBITDA), because predicting the fair multiple is the model's
+task. Backtest metrics (spread, IC) are reported for **every** model and are not used to
+choose. Reason: in 2011-2017 the IC is negative for every model and baseline, so picking
+the "best" dev IC would select the least-bad model largely by chance. This rule was set
+after the test-period results had been seen, and is recorded here so the choice is not
+tuned to them. Current choice: Random Forest (dev R^2 0.17 vs XGBoost 0.14); to be
+re-checked once the MLP is added.
+
 ## Data sources
 
 | Data | Source | Notes |
