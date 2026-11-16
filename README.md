@@ -13,8 +13,8 @@ over the next 12 months.
 |---|---|---|
 | 1 | Historical S&P 500 membership (April 1, 2011-2025) | ✅ `data/membership.csv` |
 | 2-5 | SEC financials + prices -> company x year panel | ✅ `data/panel.csv` (3,488 rows) |
-| 6 | Models: Linear/Ridge/Lasso -> RF -> XGBoost -> MLP, out-of-fold scores, SHAP | ⏳ |
-| 7 | Backtest vs SPY and simple value baselines (`src/10_backtest.py`) | ✅ code ready, waiting for final scores |
+| 6 | Models: Linear/Ridge/Lasso, RF, XGBoost (`data/scores.csv`), SHAP for RF | ✅ (MLP in progress) |
+| 7 | Backtest vs SPY and simple value baselines (`src/10_backtest.py`) | ✅ results in `results/backtest_*.csv` |
 
 ## Main dataset: `data/panel.csv`
 
