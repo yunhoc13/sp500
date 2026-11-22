@@ -13,7 +13,7 @@ over the next 12 months.
 |---|---|---|
 | 1 | Historical S&P 500 membership (April 1, 2011-2025) | ✅ `data/membership.csv` |
 | 2-5 | SEC financials + prices -> company x year panel | ✅ `data/panel.csv` (3,488 rows) |
-| 6 | Models: Linear/Ridge/Lasso, RF, XGBoost (`data/scores.csv`), SHAP for RF | ✅ (MLP in progress) |
+| 6 | Models: Linear/Ridge/Lasso, RF, XGBoost, PyTorch MLP (`data/scores.csv`), SHAP for RF | ✅ |
 | 7 | Backtest vs SPY and simple value baselines (`src/10_backtest.py`) | ✅ results in `results/backtest_*.csv` |
 
 ## Main dataset: `data/panel.csv`
@@ -102,8 +102,9 @@ task. Backtest metrics (spread, IC) are reported for **every** model and are not
 choose. Reason: in 2011-2017 the IC is negative for every model and baseline, so picking
 the "best" dev IC would select the least-bad model largely by chance. This rule was set
 after the test-period results had been seen, and is recorded here so the choice is not
-tuned to them. Current choice: Random Forest (dev R^2 0.17 vs XGBoost 0.14); to be
-re-checked once the MLP is added.
+tuned to them. Current choice: Random Forest (dev R^2 0.174 vs XGBoost 0.142 and MLP 0.128;
+re-checked 2026-11-22 after adding the MLP, whose test R^2 0.257 is slightly higher
+but is not used for selection).
 
 ## Data sources
 

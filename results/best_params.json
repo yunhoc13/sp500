@@ -19,5 +19,13 @@
     "max_depth": 4,
     "n_estimators": 200,
     "learning_rate": 0.02
+  },
+  "mlp": {
+    "hidden": [
+      64,
+      32
+    ],
+    "dropout": 0.2,
+    "weight_decay": 0.0001
   }
 }
