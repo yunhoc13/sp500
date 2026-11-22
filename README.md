@@ -145,11 +145,28 @@ python src/04c_full_splits.py    # full split history (prices are adjusted up to
 python src/05_build_panel.py     # -> data/panel.csv, data/data_report.txt
 ```
 
+### Current-year demo (April 1, 2026)
+
+Builds `data/panel_2026.csv` (301 companies, forward returns empty) without changing
+any file used for 2011-2025: members on April 1, 2026, SEC data and prices for the
+20 companies that joined the index after April 2025, then the same panel rules.
+
+```bash
+python src/06_demo_data.py 2026            # members, new companies' SEC data + prices
+python src/03_fundamentals.py              # re-run: adds the new companies
+python src/05_build_panel.py --demo 2026   # -> data/panel_2026.csv
+python src/16_demo_top20.py                # final model (RF) Top 20 + SHAP -> results/top20_rf_2026.csv
+```
+
+Checked: `05_build_panel.py` without `--demo` still reproduces `panel.csv` exactly, and
+`--demo 2025` reproduces the 2025 rows of `panel.csv`. The Top 20 is an illustration of
+what the model looks at, not an investment recommendation (the backtest signal is weak).
+
 ## Use of AI tools
 
 Following the course policy, we disclose AI-generated code. The following files were
 written with help from Claude (Anthropic): the data pipeline (`config.py`, `tags.py`,
-`01`-`05`), the backtests (`10_backtest.py`, `14_backtest_variants.py`), the smoothed-target experiment (`15_smoothed_target.py`) and the MLP (`mlp.py`, `11_mlp.py`). The team chose the
+`01`-`06`), the backtests (`10_backtest.py`, `14_backtest_variants.py`), the smoothed-target experiment (`15_smoothed_target.py`) and the MLP (`mlp.py`, `11_mlp.py`). The team chose the
 research design, checked every step against the raw data (e.g. share counts, stock
 splits, P/E consistency) and fixed the problems found. Data sources are listed above.
 

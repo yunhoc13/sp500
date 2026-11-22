@@ -1,0 +1,52 @@
+Member-years (S&P 500, April 1, 2011-2025)                       503
+  after ticker -> CIK mapping                                    494
+  after removing share-class duplicates (GOOG/GOOGL)             491
+  after excluding financials (SIC 6000-6799)                     394
+  with a 10-K filed before April 1 (point-in-time)               393
+  with a price on the formation date (yfinance)                  389
+  with positive EBITDA and EV                                    378
+  after dropping: no debt data (debt tag missing, EV would be understated)     346
+  after dropping: implausible market cap (< $1B or > $5T)        346
+  after dropping: debt negative or too small for its interest expense     339
+  after dropping: EBITDA < 2% of revenue (EV/EBITDA not meaningful)     330
+  with all features present -> panel.csv                         301
+  ... of which have a forward 12-month return                      0
+  ... of which stopped trading during the holding year             0
+
+Coverage per year (rows remaining after each step):
+      members  cik  dedup  nonfin  10k  price  ebitda>0   no  implausible  debt  EBITDA  final  kept_%
+year                                                                                                  
+2026      503  494    491     394  393    389       378  346          346   339     330    301    59.8
+
+Flags in panel.csv (share of rows):
+  shares_fixed        0.007
+  op_income_fixed     0.163
+  hold_truncated      0.000
+  pe_low              0.000
+
+Missing rate per feature (panel_full.csv):
+log_mcap          0.000
+rev_growth        0.000
+eps_growth        0.015
+op_margin         0.000
+roe               0.070
+debt_to_equity    0.070
+volatility        0.003
+beta              0.003
+gross_margin      0.306
+
+Rows per year (panel.csv):
+year
+2026    301
+
+Rows per sector (panel.csv):
+sector
+Technology       71
+Industrials      68
+Consumer         43
+Health Care      31
+Utilities        31
+Materials        26
+Energy           12
+Other            11
+Communication     8

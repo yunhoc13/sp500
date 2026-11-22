@@ -7,8 +7,14 @@ Outputs: data/panel_full.csv   every member-year we could build (features may be
          data/data_report.txt  how many rows were dropped at each step (for the paper)
 
 One row = one company on one formation date (April 1 of `year`).
+
+Current-year demo (no forward returns yet; never touches panel.csv):
+    python src/06_demo_data.py 2026          # members, new companies' SEC data and prices
+    python src/03_fundamentals.py            # re-run so the new companies are included
+    python src/05_build_panel.py --demo 2026 # -> data/panel_2026.csv
 """
 import json
+import sys
 
 import numpy as np
 import pandas as pd
@@ -59,13 +65,28 @@ def log(msg, frame, short):
     print(report[-1])
 
 
+# ---------- mode -----------------------------------------------------------
+DEMO = int(sys.argv[sys.argv.index("--demo") + 1]) if "--demo" in sys.argv else None
+SUF = f"_{DEMO}" if DEMO else ""          # demo outputs go to *_<year> files
+
 # ---------- load ----------------------------------------------------------
-members = pd.read_csv(DATA / "membership.csv")
-tc = pd.read_csv(DATA / "ticker_cik.csv")
+members = pd.read_csv(DATA / f"membership{SUF}.csv")
+tc = pd.read_csv(DATA / f"ticker_cik{SUF}.csv")
 fund = pd.read_csv(DATA / "fundamentals.csv", parse_dates=["period_end", "available_date"])
 close = pd.read_csv(RAW / "prices_close.csv.gz", index_col=0, parse_dates=True)
 adj = pd.read_csv(RAW / "prices_adjclose.csv.gz", index_col=0, parse_dates=True)
 splits = pd.read_csv(RAW / "splits.csv", parse_dates=["date"])
+if DEMO:   # prices of companies that are new in the demo year (06_demo_data.py)
+    extra = RAW / f"prices_close{SUF}_new.csv.gz"
+    if extra.exists():
+        close = close.join(pd.read_csv(extra, index_col=0, parse_dates=True), how="outer")
+        adj = adj.join(pd.read_csv(RAW / f"prices_adjclose{SUF}_new.csv.gz", index_col=0,
+                                   parse_dates=True), how="outer")
+        splits = pd.concat([splits, pd.read_csv(RAW / f"splits{SUF}_new.csv", parse_dates=["date"])])
+    close = close.loc[:, ~close.columns.duplicated()]
+    adj = adj.loc[:, ~adj.columns.duplicated()]
+    if formation_date(DEMO + 1) > adj.index.max():
+        print(f"Demo year {DEMO}: forward returns are left empty (the future is unknown)")
 
 sic = {}
 for f in (RAW_SEC / "submissions").glob("CIK*.json"):
@@ -155,23 +176,25 @@ for r in df.itertuples(index=False):
         if ok.sum() >= 200:
             rec["volatility"] = y[ok].std() * np.sqrt(252)
             rec["beta"] = np.cov(y[ok], x[ok])[0, 1] / x[ok].var()
-        # forward 12-month return (stock and SPY), from F to next April 1
+        # forward 12-month return (stock and SPY), from F to next April 1.
+        # Skipped when the holding year is not over yet (current-year demo).
         F1 = formation_date(r.year + 1)
-        a0_date, a0 = last_price(adj[sym], F)
-        a1_date, a1 = last_price(adj[sym], F1)
-        s0_date, s0 = last_price(adj[BENCHMARK], F)
-        s1_date, s1 = last_price(adj[BENCHMARK], F1)
-        if a0 is not None and a1 is None:
-            # stopped trading during the holding year (acquired / delisted):
-            # use the last available price, and compare with SPY to that date
-            after = adj[sym].loc[F:F1].dropna()
-            if len(after):
-                a1_date, a1 = after.index[-1], after.iloc[-1]
-                s1_date, s1 = last_price(adj[BENCHMARK], a1_date)
-                rec["hold_truncated"] = True
-        if None not in (a0, a1, s0, s1):
-            rec["fwd_ret_12m"] = a1 / a0 - 1
-            rec["fwd_excess_ret_12m"] = (a1 / a0) - (s1 / s0)
+        if F1 <= adj.index.max():
+            a0_date, a0 = last_price(adj[sym], F)
+            a1_date, a1 = last_price(adj[sym], F1)
+            s0_date, s0 = last_price(adj[BENCHMARK], F)
+            s1_date, s1 = last_price(adj[BENCHMARK], F1)
+            if a0 is not None and a1 is None:
+                # stopped trading during the holding year (acquired / delisted):
+                # use the last available price, and compare with SPY to that date
+                after = adj[sym].loc[F:F1].dropna()
+                if len(after):
+                    a1_date, a1 = after.index[-1], after.iloc[-1]
+                    s1_date, s1 = last_price(adj[BENCHMARK], a1_date)
+                    rec["hold_truncated"] = True
+            if None not in (a0, a1, s0, s1):
+                rec["fwd_ret_12m"] = a1 / a0 - 1
+                rec["fwd_excess_ret_12m"] = (a1 / a0) - (s1 / s0)
 
     # ---- fundamentals-based fields
     rev, op, da = cur.revenue, cur.op_income, cur.da
@@ -224,9 +247,9 @@ for why, rule in checks.items():
 # by hand; only rows confirmed as data errors should be fixed at the source.
 panel["pe_low"] = panel.pe < 3
 panel.loc[panel.pe_low, ["year", "ticker", "price", "mcap", "net_income", "pe"]].to_csv(
-    DATA / "review_low_pe.csv", index=False)
+    DATA / f"review_low_pe{SUF}.csv", index=False)
 pd.concat(dropped)[["year", "ticker", "drop_reason", "price", "mcap", "pe", "ebitda",
-                    "revenue", "debt", "interest_expense"]].to_csv(DATA / "dropped_rows.csv", index=False)
+                    "revenue", "debt", "interest_expense"]].to_csv(DATA / f"dropped_rows{SUF}.csv", index=False)
 panel["log_ev_ebitda"] = np.log(panel.ev / panel.ebitda)
 panel["log_mcap"] = np.log(panel.mcap)
 
@@ -245,7 +268,7 @@ for c in cols:
     if c not in panel:
         panel[c] = np.nan
 panel = panel[cols].sort_values(["year", "ticker"])
-panel.to_csv(DATA / "panel_full.csv", index=False)
+panel.to_csv(DATA / f"panel_full{SUF}.csv", index=False)
 
 complete = panel.dropna(subset=FEATURES + ["log_ev_ebitda"])
 log("  with all features present -> panel.csv", complete, "final")
@@ -253,7 +276,7 @@ report.append(f"{'  ... of which have a forward 12-month return':<60}"
               f"{complete.fwd_excess_ret_12m.notna().sum():>8}")
 report.append(f"{'  ... of which stopped trading during the holding year':<60}"
               f"{int(complete.hold_truncated.sum()):>8}")
-complete.to_csv(DATA / "panel.csv", index=False)
+complete.to_csv(DATA / f"panel{SUF}.csv", index=False)
 
 # coverage per year: how many index members survive each step
 cov = pd.DataFrame(stages).fillna(0).astype(int)
@@ -270,6 +293,6 @@ report.append("\nRows per year (panel.csv):")
 report.append(complete.groupby("year").size().to_string())
 report.append("\nRows per sector (panel.csv):")
 report.append(complete.sector.value_counts().to_string())
-(DATA / "data_report.txt").write_text("\n".join(report))
+(DATA / f"data_report{SUF}.txt").write_text("\n".join(report))
 print("\n".join(report[report.index("\nCoverage per year (rows remaining after each step):"):]))
 print("\nDone. data/panel.csv is ready for modeling.")
