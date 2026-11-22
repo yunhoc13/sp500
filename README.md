@@ -145,4 +145,12 @@ python src/04c_full_splits.py    # full split history (prices are adjusted up to
 python src/05_build_panel.py     # -> data/panel.csv, data/data_report.txt
 ```
 
+## Use of AI tools
+
+Following the course policy, we disclose AI-generated code. The following files were
+written with help from Claude (Anthropic): the data pipeline (`config.py`, `tags.py`,
+`01`-`05`), the backtests (`10_backtest.py`) and the MLP (`mlp.py`, `11_mlp.py`). The team chose the
+research design, checked every step against the raw data (e.g. share counts, stock
+splits, P/E consistency) and fixed the problems found. Data sources are listed above.
+
 Data is for academic use in this course project only.
