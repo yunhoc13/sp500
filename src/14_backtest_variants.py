@@ -1,4 +1,4 @@
-"""Step 12: ways to USE the mispricing score better, and portfolio performance.
+"""Step 14: ways to USE the mispricing score better, and portfolio performance.
 
 These are analysis experiments. The test period (2018-2025) had already been seen
 when they were designed, so they are reported for every model and are NOT used to
@@ -24,12 +24,13 @@ Inputs : data/panel.csv, data/scores.csv,
 Outputs: data/momentum.csv
          results/variants_summary.csv        test + dev metrics per variant
          results/variants_yearly.csv         yearly spread per variant
-         results/portfolio_performance.csv   cumulative, annualized, Sharpe, drawdown
+         results/portfolio_performance.csv   cumulative, annualized, Sharpe, drawdown,
+                                             vs SPY and vs all stocks equal-weight
          results/portfolio_yearly.csv        yearly returns of each portfolio
          figures/cumulative_returns.png      growth of $1, test period
          figures/variants_spread.png         spread with and without 2020
 
-    python src/12_backtest_variants.py
+    python src/14_backtest_variants.py
 """
 from pathlib import Path
 
@@ -161,17 +162,32 @@ def summarize(y, years):
     return s
 
 
-def portfolio(v, years):
-    """Equal-weight cheapest group, rebalanced each April 1, vs SPY."""
+def portfolio(v, panel, years):
+    """Equal-weight cheapest group, rebalanced each April 1, vs SPY and vs an
+    equal-weight portfolio of ALL stocks in the panel ("all_stocks_ew").
+
+    SPY is cap-weighted (large tech firms dominate it), while our portfolios hold
+    every stock with the same weight. The equal-weight universe is the fair
+    comparison for that: same stocks, same weighting, no valuation signal.
+    """
     k = ["variant"] + KEYS + ["year"]
     t = v[v["year"].isin(years)]
     p = t[t["g"] == 1].groupby(k).agg(port=("fwd_ret_12m", "mean"), spy=("spy_ret", "first"))
+    u = panel[panel["year"].isin(years)].dropna(subset=["fwd_ret_12m", RET])
+    ew = u.groupby("year")["fwd_ret_12m"].mean()
+    spy_y = (u["fwd_ret_12m"] - u[RET]).groupby(u["year"]).first()
+    p["ew_all"] = p.index.get_level_values("year").map(ew)
+    bench = pd.DataFrame({"port": ew, "spy": spy_y, "ew_all": ew})
+    bench.index = pd.MultiIndex.from_tuples([("base", "all_stocks_ew", "benchmark", y) for y in ew.index],
+                                            names=k)
+    p = pd.concat([p, bench])
     p["expensive"] = t[t["g"] == N].groupby(k)["fwd_ret_12m"].mean()
     p["long_short"] = p["port"] - p["expensive"]
     rows = []
     for key, g in p.groupby(["variant"] + KEYS):
         g = g.sort_index()
         r, spy, ex = g["port"], g["spy"], g["port"] - g["spy"]
+        ew_ex = g["port"] - g["ew_all"]
         wealth = (1 + r).cumprod()
         dd = (wealth / wealth.cummax().clip(lower=1) - 1).min()
         n = len(r)
@@ -185,6 +201,9 @@ def portfolio(v, years):
                          info_ratio=ex.mean() / ex.std(),
                          max_drawdown_annual=dd,
                          beat_spy_years=int((ex > 0).sum()),
+                         ew_cumulative=(1 + g["ew_all"]).prod() - 1,
+                         excess_vs_ew_avg=ew_ex.mean(),
+                         beat_ew_years=int((ew_ex > 0).sum()),
                          long_short_avg=g["long_short"].mean()))
     return pd.DataFrame(rows).set_index(["variant"] + KEYS), p
 
@@ -202,7 +221,7 @@ def main():
     summ = summ.reset_index().set_index(["period", "variant"] + KEYS).sort_index()
     summ.round(4).to_csv(RESULTS / "variants_summary.csv")
 
-    perf, pyear = portfolio(v, TEST_YEARS)
+    perf, pyear = portfolio(v, panel, TEST_YEARS)
     perf.round(4).to_csv(RESULTS / "portfolio_performance.csv")
     pyear.round(4).to_csv(RESULTS / "portfolio_yearly.csv")
 
@@ -215,8 +234,12 @@ def main():
         fig, ax = plt.subplots(figsize=(9, 5))
         spy = pyear.xs(("base", "cheap", "baseline"), level=["variant"] + KEYS)["spy"]
         yrs = [TEST_YEARS[0]] + [yr + 1 for yr in TEST_YEARS]
-        ax.plot(yrs, np.r_[1, (1 + spy).cumprod()], color="black", lw=2.5, label="SPY")
-        for (m, s) in MAIN:
+        ax.plot(yrs, np.r_[1, (1 + spy).cumprod()], color="black", lw=2.5, label="SPY (cap-weighted)")
+        ew = pyear.xs(("base", "all_stocks_ew", "benchmark"), level=["variant"] + KEYS)["port"]
+        ax.plot(yrs, np.r_[1, (1 + ew).cumprod()], color="gray", lw=2.5, ls="--",
+                label="all stocks, equal weight")
+        have = set(zip(pyear.index.get_level_values("model"), pyear.index.get_level_values("scheme")))
+        for (m, s) in [k for k in MAIN if k in have]:
             r = pyear.xs(("base", m, s), level=["variant"] + KEYS)["port"]
             ax.plot(yrs, np.r_[1, (1 + r).cumprod()], lw=1.5, label=f"{m} ({s})")
         ax.set_xlabel("April 1 of year")
@@ -262,9 +285,11 @@ def main():
         print(f"\n[{var}]")
         print(t.loc[var].loc[[k for k in MAIN if k in t.loc[var].index], cols].round(3).to_string())
     print("\nPortfolio performance, cheapest group (base), test period:")
-    print(perf.loc["base"].loc[[k for k in MAIN if k in perf.loc["base"].index]][
-        ["cumulative", "spy_cumulative", "ann_return", "spy_ann_return", "sharpe_rf0",
-         "spy_sharpe_rf0", "max_drawdown_annual", "beat_spy_years"]].round(3).to_string())
+    show = [("all_stocks_ew", "benchmark")] + MAIN
+    print(perf.loc["base"].loc[[k for k in show if k in perf.loc["base"].index]][
+        ["cumulative", "spy_cumulative", "ew_cumulative", "ann_return", "sharpe_rf0",
+         "spy_sharpe_rf0", "max_drawdown_annual", "beat_spy_years", "excess_vs_ew_avg",
+         "beat_ew_years"]].round(3).to_string())
 
 
 if __name__ == "__main__":
