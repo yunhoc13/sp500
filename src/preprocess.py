@@ -41,6 +41,13 @@ RESULTS = ROOT / "results"
 
 FEATURES = ["log_mcap", "rev_growth", "eps_growth", "op_margin", "roe",
             "debt_to_equity", "volatility", "beta"]
+# Price-free variant: log_mcap, volatility and beta are computed from the stock
+# price, which is also inside the target, so they can leak "how cheap" a stock
+# is. Size is measured with log revenue instead (no price in it).
+FEATURES_NOPX = ["log_revenue", "rev_growth", "eps_growth", "op_margin", "roe",
+                 "debt_to_equity"]
+FEATURE_SETS = {"base": FEATURES, "nopx": FEATURES_NOPX}
+ALL_FEATURES = list(dict.fromkeys(FEATURES + FEATURES_NOPX))
 SECTOR = "sector"
 TARGET = "log_ev_ebitda"
 GROUP = "cik"            # company identifier used for folds
@@ -73,9 +80,10 @@ def winsorize_by_year(df, cols, q=WINSOR_Q):
 def load_panel(path=DATA / "panel.csv"):
     """Read panel.csv and winsorize the features within each year."""
     df = pd.read_csv(path)
-    assert not set(FEATURES) & set(FORBIDDEN)
-    df = df.dropna(subset=FEATURES + [TARGET, SECTOR]).reset_index(drop=True)
-    df = winsorize_by_year(df, FEATURES)
+    df["log_revenue"] = np.log(df["revenue"])
+    assert not set(ALL_FEATURES) & set(FORBIDDEN)
+    df = df.dropna(subset=ALL_FEATURES + [TARGET, SECTOR]).reset_index(drop=True)
+    df = winsorize_by_year(df, ALL_FEATURES)
     df[LEVEL] = loo_year_median(df)
     return df
 
@@ -101,13 +109,14 @@ def sector_levels(df):
 class Preprocessor:
     """Fit on training rows; transform any rows the same way."""
 
-    def __init__(self, sectors=None):
+    def __init__(self, sectors=None, features=None):
         self.sectors = sectors
+        self.features = list(features or FEATURES)
 
     def fit(self, train):
         if self.sectors is None:
             self.sectors = sector_levels(train)
-        self.scaler = StandardScaler().fit(train[FEATURES].to_numpy(float))
+        self.scaler = StandardScaler().fit(train[self.features].to_numpy(float))
         g = train.groupby(YEAR)[TARGET]
         self.y_lo = g.quantile(WINSOR_Q).to_dict()
         self.y_hi = g.quantile(1 - WINSOR_Q).to_dict()
@@ -118,10 +127,10 @@ class Preprocessor:
     # ----- features -------------------------------------------------------
     @property
     def feature_names(self):
-        return FEATURES + [f"sector_{s}" for s in self.sectors[1:]]
+        return self.features + [f"sector_{s}" for s in self.sectors[1:]]
 
     def transform_X(self, rows):
-        num = self.scaler.transform(rows[FEATURES].to_numpy(float))
+        num = self.scaler.transform(rows[self.features].to_numpy(float))
         sec = rows[SECTOR].to_numpy()
         onehot = np.column_stack([(sec == s).astype(float) for s in self.sectors[1:]])
         return np.hstack([num, onehot])
