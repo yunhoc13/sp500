@@ -8,6 +8,7 @@
 
     python src/11_mlp.py           # full run (~10-20 min on a laptop)
     python src/11_mlp.py --quick   # one setting, dev years only (sanity check)
+    python src/11_mlp.py --nopx    # price-free features (preprocess.FEATURES_NOPX) -> "mlp_nopx"
 """
 import itertools
 import sys
@@ -17,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 from mlp import TorchMLP
-from preprocess import load_panel, DEV_YEARS, RESULTS
+from preprocess import load_panel, DEV_YEARS, RESULTS, FEATURES, FEATURES_NOPX
 from scoring import score_model, fit_metrics, save_scores, save_params
 from splits import load_folds, SCHEMES
 
@@ -34,8 +35,14 @@ def grid_points(grid):
         yield dict(zip(keys, vals))
 
 
+NOPX = "--nopx" in sys.argv
+NAME = "mlp_nopx" if NOPX else "mlp"
+FEATS = FEATURES_NOPX if NOPX else FEATURES
+
+
 def dev_r2(df, fold, params):
-    preds = score_model(df, fold, lambda: TorchMLP(**params), "oof", years=DEV_YEARS)
+    preds = score_model(df, fold, lambda: TorchMLP(**params), "oof", years=DEV_YEARS,
+                        features=FEATS)
     return fit_metrics(df, preds)["r2"].mean()
 
 
@@ -57,23 +64,23 @@ def main():
         r2 = dev_r2(df, fold, params)
         rows.append({**{k: str(v) if k == "hidden" else v for k, v in params.items()},
                      "dev_r2": r2})
-        print(f"mlp {params} dev R2={r2:.3f} ({time.time() - t0:.0f}s)", flush=True)
+        print(f"{NAME} {params} dev R2={r2:.3f} ({time.time() - t0:.0f}s)", flush=True)
     tuning = pd.DataFrame(rows)
-    tuning.to_csv(RESULTS / "tuning_mlp.csv", index=False)
+    tuning.to_csv(RESULTS / f"tuning_{NAME}.csv", index=False)
     best_row = tuning.loc[tuning["dev_r2"].idxmax()]
     best = {"hidden": list(eval(best_row["hidden"])), "dropout": float(best_row["dropout"]),
             "weight_decay": float(best_row["weight_decay"])}
-    save_params("mlp", best)
-    print(f"mlp best: {best}", flush=True)
+    save_params(NAME, best)
+    print(f"{NAME} best: {best}", flush=True)
 
     # ---- 2. score all years, all schemes --------------------------------------
-    preds = pd.concat([score_model(df, fold, lambda: TorchMLP(**best), s) for s in SCHEMES],
-                      ignore_index=True)
-    save_scores(preds, "mlp")
-    m = fit_metrics(df, preds).assign(model="mlp")
+    preds = pd.concat([score_model(df, fold, lambda: TorchMLP(**best), s, features=FEATS)
+                       for s in SCHEMES], ignore_index=True)
+    save_scores(preds, NAME)
+    m = fit_metrics(df, preds).assign(model=NAME)
     path = RESULTS / "fit_metrics.csv"
     old = pd.read_csv(path)
-    pd.concat([old[old["model"] != "mlp"], m], ignore_index=True).to_csv(path, index=False)
+    pd.concat([old[old["model"] != NAME], m], ignore_index=True).to_csv(path, index=False)
 
     allm = pd.read_csv(path)
     allm["period"] = np.where(allm["year"] <= 2017, "dev 2011-17", "test 2018-25")
