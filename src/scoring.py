@@ -17,17 +17,18 @@ SCORE_COLS = ["ticker", "year", "model", "scheme", "pred_log_ev_ebitda",
               "mispricing", "cik", "fold"]
 
 
-def score_model(df, fold, make_model, scheme, years=ALL_YEARS, features=None):
+def score_model(df, fold, make_model, scheme, years=ALL_YEARS, features=None, use_sector=True):
     """Out-of-sample prediction for every (year, fold) test block.
 
     make_model: function returning a fresh, unfitted model with fit/predict.
     features:   list of feature columns (default: preprocess.FEATURES).
+    use_sector: False drops the sector one-hots (feature-group ablation).
     Returns one row per scored company-year.
     """
     sectors = sector_levels(df)
     out = []
     for t, f, tr, te in iter_splits(df, fold, scheme, years):
-        prep = Preprocessor(sectors, features).fit(df.loc[tr])
+        prep = Preprocessor(sectors, features, use_sector).fit(df.loc[tr])
         model = make_model()
         model.fit(prep.transform_X(df.loc[tr]), prep.target(df.loc[tr]))
         raw = model.predict(prep.transform_X(df.loc[te]))

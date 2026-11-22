@@ -124,9 +124,10 @@ def sector_levels(df):
 class Preprocessor:
     """Fit on training rows; transform any rows the same way."""
 
-    def __init__(self, sectors=None, features=None):
+    def __init__(self, sectors=None, features=None, use_sector=True):
         self.sectors = sectors
         self.features = list(features or FEATURES)
+        self.use_sector = use_sector      # False: no sector one-hots (feature-group ablation)
 
     def fit(self, train):
         if self.sectors is None:
@@ -142,10 +143,12 @@ class Preprocessor:
     # ----- features -------------------------------------------------------
     @property
     def feature_names(self):
-        return self.features + [f"sector_{s}" for s in self.sectors[1:]]
+        return self.features + ([f"sector_{s}" for s in self.sectors[1:]] if self.use_sector else [])
 
     def transform_X(self, rows):
         num = self.scaler.transform(rows[self.features].to_numpy(float))
+        if not self.use_sector:
+            return num
         sec = rows[SECTOR].to_numpy()
         onehot = np.column_stack([(sec == s).astype(float) for s in self.sectors[1:]])
         return np.hstack([num, onehot])
