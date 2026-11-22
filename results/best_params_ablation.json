@@ -1,0 +1,32 @@
+{
+  "ridge_novol": {
+    "oof": 100.0,
+    "walkforward": 316.2277660168379,
+    "walkforward_self": 0.31622776601683794,
+    "oof_year": 10.0
+  },
+  "rf_novol": {
+    "min_samples_leaf": 5,
+    "max_features": 0.33
+  },
+  "ridge_revsize": {
+    "oof": 31.622776601683793,
+    "walkforward": 100.0,
+    "walkforward_self": 31.622776601683793,
+    "oof_year": 10.0
+  },
+  "rf_revsize": {
+    "min_samples_leaf": 5,
+    "max_features": 0.33
+  },
+  "xgb_novol": {
+    "max_depth": 2,
+    "n_estimators": 200,
+    "learning_rate": 0.02
+  },
+  "xgb_revsize": {
+    "max_depth": 3,
+    "n_estimators": 200,
+    "learning_rate": 0.02
+  }
+}

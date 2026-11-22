@@ -27,6 +27,7 @@ import pandas as pd
 from preprocess import (load_panel, Preprocessor, sector_levels, FEATURES, TARGET,
                         DATA, RESULTS, DEV_YEARS)
 from splits import load_folds, iter_splits
+from preprocess import ALL_YEARS
 from models import MODELS
 
 LABELS = {
@@ -44,13 +45,13 @@ def best_model_name():
     return m.groupby("model")["r2"].mean().idxmax()
 
 
-def explain(df, fold, name):
+def explain(df, fold, name, years=ALL_YEARS):
     import shap
     factory = MODELS[name][0]
     params = json.loads((RESULTS / "best_params.json").read_text())[name]
     sectors = sector_levels(df)
     out = []
-    for t, f, tr, te in iter_splits(df, fold, "oof"):
+    for t, f, tr, te in iter_splits(df, fold, "oof", years):
         prep = Preprocessor(sectors).fit(df.loc[tr])
         model = factory(**params)
         model.fit(prep.transform_X(df.loc[tr]), prep.target(df.loc[tr]))
@@ -125,6 +126,10 @@ def reasons(contrib, raw_row, positive, n=3):
     return "; ".join(out)
 
 
+def pct(v):
+    return "" if pd.isna(v) else f"{v:.1%}"
+
+
 def top10(df_raw, shap_df, year, k=10):
     """Most undervalued companies in `year`, explained.
 
@@ -151,8 +156,8 @@ def top10(df_raw, shap_df, year, k=10):
             "discount_vs_fair": f"{np.exp(r['mispricing']) - 1:.0%}",
             "raises_fair_value": reasons(contrib, raw, positive=True),
             "lowers_fair_value": reasons(contrib, raw, positive=False),
-            "fwd_ret_12m": f"{r['fwd_ret_12m']:.1%}",
-            "fwd_excess_ret_12m_vs_spy": f"{r['fwd_excess_ret_12m']:.1%}",
+            "fwd_ret_12m": pct(r["fwd_ret_12m"]),
+            "fwd_excess_ret_12m_vs_spy": pct(r["fwd_excess_ret_12m"]),
         })
     return pd.DataFrame(rows)
 

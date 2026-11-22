@@ -37,12 +37,21 @@ def make_folds(df, k=K, seed=SEED):
     return pd.DataFrame({GROUP: ciks, "fold": np.arange(len(ciks)) % k}).sort_values(GROUP)
 
 
-def load_folds(df):
-    """Return a Series fold (index aligned with df)."""
+def load_folds(df, allow_new=False):
+    """Return a Series fold (index aligned with df).
+
+    allow_new: companies missing from folds.csv (e.g. firms that joined the
+    index in a new demo year) get a fold from a separate seeded shuffle, so the
+    existing assignment never changes. Off by default.
+    """
     folds = pd.read_csv(FOLDS_PATH)
     fold = df[GROUP].map(folds.set_index(GROUP)["fold"])
     if fold.isna().any():
-        raise ValueError(f"{fold.isna().sum()} rows have a cik missing from folds.csv")
+        if not allow_new:
+            raise ValueError(f"{fold.isna().sum()} rows have a cik missing from folds.csv")
+        new = np.sort(df.loc[fold.isna(), GROUP].unique())
+        np.random.default_rng(SEED + 1).shuffle(new)
+        fold = fold.fillna(df[GROUP].map(dict(zip(new, np.arange(len(new)) % K))))
     return fold.astype(int)
 
 

@@ -68,18 +68,18 @@ def fit_metrics(df, preds):
     return pd.DataFrame(rows)
 
 
-def save_scores(preds, model_name):
-    """Add/replace this model's rows in data/scores.csv."""
+def save_scores(preds, model_name, path=SCORES_PATH):
+    """Add/replace this model's rows in data/scores.csv (or another scores file)."""
     new = preds.assign(model=model_name)[SCORE_COLS]
-    if SCORES_PATH.exists():
-        old = pd.read_csv(SCORES_PATH)
+    if path.exists():
+        old = pd.read_csv(path)
         new = pd.concat([old[old["model"] != model_name], new], ignore_index=True)
-    new.sort_values(["model", "scheme", "year", "ticker"]).to_csv(SCORES_PATH, index=False)
+    new.sort_values(["model", "scheme", "year", "ticker"]).to_csv(path, index=False)
 
 
-def save_params(model_name, params):
+def save_params(model_name, params, path=None):
     RESULTS.mkdir(exist_ok=True)
-    path = RESULTS / "best_params.json"
+    path = path or RESULTS / "best_params.json"
     allp = json.loads(path.read_text()) if path.exists() else {}
     allp[model_name] = params
     path.write_text(json.dumps(allp, indent=2))

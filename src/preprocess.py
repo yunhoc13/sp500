@@ -46,8 +46,16 @@ FEATURES = ["log_mcap", "rev_growth", "eps_growth", "op_margin", "roe",
 # is. Size is measured with log revenue instead (no price in it).
 FEATURES_NOPX = ["log_revenue", "rev_growth", "eps_growth", "op_margin", "roe",
                  "debt_to_equity"]
-FEATURE_SETS = {"base": FEATURES, "nopx": FEATURES_NOPX}
-ALL_FEATURES = list(dict.fromkeys(FEATURES + FEATURES_NOPX))
+# Ablations that separate the two price channels:
+#   novol   = keep log_mcap, drop volatility and beta
+#   revsize = size from log revenue, keep volatility and beta
+FEATURES_NOVOL = ["log_mcap", "rev_growth", "eps_growth", "op_margin", "roe",
+                  "debt_to_equity"]
+FEATURES_REVSIZE = ["log_revenue", "rev_growth", "eps_growth", "op_margin", "roe",
+                    "debt_to_equity", "volatility", "beta"]
+FEATURE_SETS = {"base": FEATURES, "nopx": FEATURES_NOPX,
+                "novol": FEATURES_NOVOL, "revsize": FEATURES_REVSIZE}
+ALL_FEATURES = list(dict.fromkeys(sum(FEATURE_SETS.values(), [])))
 SECTOR = "sector"
 TARGET = "log_ev_ebitda"
 GROUP = "cik"            # company identifier used for folds
@@ -77,9 +85,16 @@ def winsorize_by_year(df, cols, q=WINSOR_Q):
     return out
 
 
-def load_panel(path=DATA / "panel.csv"):
-    """Read panel.csv and winsorize the features within each year."""
+def load_panel(path=DATA / "panel.csv", extra=None):
+    """Read panel.csv and winsorize the features within each year.
+
+    extra: optional path to more formation-year rows with the same columns
+    (e.g. data/panel_2026.csv for the current-year demo; forward returns may
+    be empty there). They are appended before any processing.
+    """
     df = pd.read_csv(path)
+    if extra is not None:
+        df = pd.concat([df, pd.read_csv(extra)], ignore_index=True)
     df["log_revenue"] = np.log(df["revenue"])
     assert not set(ALL_FEATURES) & set(FORBIDDEN)
     df = df.dropna(subset=ALL_FEATURES + [TARGET, SECTOR]).reset_index(drop=True)
